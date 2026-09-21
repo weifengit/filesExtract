@@ -23,34 +23,49 @@ async function pick() {
 </script>
 
 <template>
-  <div class="path-row">
-    <span class="path-label">{{ label }}</span>
-    <button type="button" @click="pick">
-      {{ modelValue ? '重新选择' : buttonText }}
-    </button>
-    <span class="path-value" :class="{ empty: !modelValue }">
-      {{ modelValue ? modelValue.name : '未选择（刷新后需重新选择）' }}
-    </span>
+  <div class="path-picker">
+    <div class="path-label">{{ label }}</div>
+    <div class="path-controls">
+      <button type="button" class="path-btn" @click="pick">
+        {{ modelValue ? '重新选择' : buttonText }}
+      </button>
+      <span
+        v-if="modelValue"
+        class="path-value"
+        :title="modelValue.name"
+      >
+        已选择：{{ modelValue.name }}
+      </span>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.path-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+.path-picker {
+  padding: 10px 0;
 }
 .path-label {
-  width: 150px;
-  flex-shrink: 0;
   font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.path-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+}
+.path-btn {
+  min-width: 100px;
+  text-align: center;
+  padding: 7px 16px;
 }
 .path-value {
   color: var(--text-muted);
-  word-break: break-all;
-}
-.path-value.empty {
-  color: var(--warn);
+  font-size: 13px;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

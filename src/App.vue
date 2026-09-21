@@ -21,6 +21,9 @@ import type {
   ResultRow,
 } from './types'
 
+// TODO: 换成你自己的 GitHub 页面地址
+const GITHUB_URL = 'https://github.com/weifengit/filesExtract'
+
 const path1 = ref<FileSystemDirectoryHandle | null>(null)
 const path2 = ref<FileSystemDirectoryHandle | null>(null)
 
@@ -151,10 +154,29 @@ function downloadOutput() {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+// 下载随应用打包的示例 Excel 模板（public/示例.xlsx，构建后打进 dist/，Tauri 打包时一并分发）
+async function downloadExample() {
+  const url = `${import.meta.env.BASE_URL}示例.xlsx`
+  try {
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const blob = await res.blob()
+    const obj = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = obj
+    a.download = '示例.xlsx'
+    a.click()
+    URL.revokeObjectURL(obj)
+    addLog('info', '已下载示例模板：示例.xlsx')
+  } catch (e) {
+    logError(e, '下载示例模板失败')
+  }
+}
 </script>
 
 <template>
-  <header>
+  <header class="header">
     <h1>filesExtract · 文件提取工具</h1>
     <p class="subtitle">
       根据 Excel 中的【文件名 / 需要的文件 / 提取文件内容】批量复制文件并提取全文，生成
@@ -163,9 +185,12 @@ function downloadOutput() {
   </header>
 
   <section class="card">
-    <h2>① 选择目录</h2>
+    <h2><span class="step">①</span> 选择目录</h2>
+    <p class="hint">
+      路径1 为 Excel 所在目录（同时是输出位置）；路径2 为文件所在文件夹。
+    </p>
     <PathPicker
-      label="路径1 · Excel 所在目录（输出位置）"
+      label="路径1 · Excel 所在目录"
       button-text="选择路径1"
       :model-value="path1"
       @update:model-value="pickPath1"
@@ -178,34 +203,46 @@ function downloadOutput() {
     />
   </section>
 
-  <section v-if="path1" class="card">
-    <h2>② 加载源 Excel</h2>
-    <ExcelSelector
-      v-if="excelCandidates.some((c) => !c.isXls)"
-      :candidates="excelCandidates"
-      :model-value="selectedExcel"
-      @update:model-value="loadExcel"
-    />
-    <p v-else-if="excelCandidates.length === 0" class="muted-text">
-      路径1 中未找到 .xlsx 文件，请确认。
-    </p>
+  <section class="card">
+    <div class="card-head">
+      <h2><span class="step">②</span> 加载源 Excel</h2>
+      <button type="button" class="link-btn" @click="downloadExample">
+        下载示例 Excel 模板
+      </button>
+    </div>
+    <template v-if="path1">
+      <ExcelSelector
+        v-if="excelCandidates.some((c) => !c.isXls)"
+        :candidates="excelCandidates"
+        :model-value="selectedExcel"
+        @update:model-value="loadExcel"
+      />
+      <p v-else-if="excelCandidates.length === 0" class="muted-text">
+        路径1 中未找到 .xlsx 文件，请确认。
+      </p>
+      <p v-else class="muted-text">
+        路径1 中只有 .xls 文件（不支持解析），请先另存为 .xlsx。
+      </p>
+      <div class="excel-actions">
+        <button
+          class="primary"
+          :disabled="!selectedExcel || excelLoading"
+          @click="loadExcel(selectedExcel)"
+        >
+          {{ excelLoading ? '读取中…' : hasExcel ? '重新读取' : '读取 Excel' }}
+        </button>
+        <span v-if="hasExcel" class="ok-text">
+          已就绪：{{ parsed?.sourceName }}（{{ parsed?.rows.length }} 行）
+        </span>
+      </div>
+    </template>
     <p v-else class="muted-text">
-      路径1 中只有 .xls 文件（不支持解析），请先另存为 .xlsx。
-    </p>
-    <button
-      class="primary"
-      :disabled="!selectedExcel || excelLoading"
-      @click="loadExcel(selectedExcel)"
-    >
-      {{ excelLoading ? '读取中…' : hasExcel ? '重新读取' : '读取 Excel' }}
-    </button>
-    <p v-if="hasExcel" class="ok-text">
-      已就绪：{{ parsed?.sourceName }}（{{ parsed?.rows.length }} 行）
+      请先在上方选择 路径1（Excel 所在目录），再加载源 Excel。
     </p>
   </section>
 
   <section class="card">
-    <h2>③ 开始处理</h2>
+    <h2><span class="step">③</span> 开始处理</h2>
     <div class="run-row">
       <button
         class="primary"
@@ -239,24 +276,89 @@ function downloadOutput() {
   </section>
 
   <section v-if="rows.length" class="card">
-    <h2>④ 处理结果</h2>
+    <h2><span class="step">④</span> 处理结果</h2>
     <ResultTable :rows="rows" />
   </section>
 
   <section class="card">
-    <h2>运行日志</h2>
+    <h2><span class="step">⑤</span> 运行日志</h2>
     <LogPanel :logs="logs" />
   </section>
+
+  <footer class="footer">
+    <span>filesExtract v0.1.0</span>
+    <a :href="GITHUB_URL" target="_blank" rel="noopener">有问题请联系作者 →</a>
+  </footer>
 </template>
 
 <style scoped>
-.muted-text {
+.header h1 {
+  margin-bottom: 4px;
+}
+.subtitle {
   color: var(--text-muted);
+  margin: 0 0 20px;
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: -4px 0 6px;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.card-head h2 {
+  margin: 0;
+}
+.link-btn {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  color: var(--primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.link-btn:hover {
+  opacity: 0.85;
+}
+
+.excel-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  min-height: 32px;
 }
 .ok-text {
   color: var(--ok);
-  margin: 8px 0 0;
 }
+
+.muted-text {
+  color: var(--text-muted);
+  margin: 6px 0;
+}
+
 .run-row {
   display: flex;
   gap: 10px;
@@ -291,10 +393,27 @@ function downloadOutput() {
 .summary {
   margin-top: 12px;
   font-size: 13.5px;
-  color: var(--text);
   background: #f0f9ff;
   border: 1px solid #bae6fd;
   border-radius: 8px;
   padding: 8px 12px;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.footer a {
+  color: var(--primary);
+  text-decoration: none;
+}
+.footer a:hover {
+  text-decoration: underline;
 }
 </style>
