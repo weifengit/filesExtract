@@ -28,10 +28,11 @@ jobs:
         with:
           version: 12
 
+      # 必须 >=22：pdfjs-dist 4.10.38 使用了 Promise.withResolvers（Node 22 才支持）
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
