@@ -1,22 +1,51 @@
 <script setup lang="ts">
-defineProps<{
-  label: string
-  buttonText: string
-  modelValue: FileSystemDirectoryHandle | null
-}>()
+type Picked = FileSystemFileHandle | FileSystemDirectoryHandle
+
+const props = withDefaults(
+  defineProps<{
+    label: string
+    buttonText: string
+    /** dir=目录选择器（路径2/输出目录）；file=文件选择器（源 Excel） */
+    kind?: 'dir' | 'file'
+    modelValue: Picked | null
+  }>(),
+  { kind: 'dir' },
+)
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', v: FileSystemDirectoryHandle | null): void
+  (e: 'update:modelValue', v: Picked | null): void
 }>()
 
 async function pick() {
-  // showDirectoryPicker 必须同步在用户手势内调用（前面不能有 await）
+  // 选择器必须同步在用户手势内调用（前面不能有 await）
   try {
-    const handle = await window.showDirectoryPicker({ mode: 'readwrite' })
-    emit('update:modelValue', handle)
+    if (props.kind === 'file') {
+      const [handle] = await window.showOpenFilePicker({
+        multiple: false,
+        types: [
+          {
+            description: 'Excel 文件',
+            accept: {
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': [
+                '.xlsx',
+                '.xls',
+              ],
+            },
+          },
+        ],
+      })
+      emit('update:modelValue', handle)
+    } else {
+      const handle = await window.showDirectoryPicker({ mode: 'readwrite' })
+      emit('update:modelValue', handle)
+    }
   } catch (e) {
     if ((e as DOMException)?.name !== 'AbortError') {
-      alert(`选择目录失败：${(e as Error)?.message ?? String(e)}`)
+      alert(
+        `选择${props.kind === 'file' ? '文件' : '目录'}失败：${
+          (e as Error)?.message ?? String(e)
+        }`,
+      )
     }
   }
 }
@@ -32,9 +61,9 @@ async function pick() {
       <span
         v-if="modelValue"
         class="path-value"
-        :title="modelValue.name"
+        :title="`已选择${kind === 'file' ? '文件' : '文件夹'}：${modelValue.name}（浏览器安全限制，仅显示名称）`"
       >
-        已选择：{{ modelValue.name }}
+        已选择：{{ modelValue.name }}<template v-if="kind === 'dir'">\</template>
       </span>
     </div>
   </div>

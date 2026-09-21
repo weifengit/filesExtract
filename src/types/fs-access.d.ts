@@ -20,4 +20,20 @@ interface Window {
   showDirectoryPicker(
     options?: DirectoryPickerOptions,
   ): Promise<FileSystemDirectoryHandle>
+  showOpenFilePicker(
+    options?: OpenFilePickerOptions,
+  ): Promise<FileSystemFileHandle[]>
+}
+
+interface FilePickerAcceptType {
+  description?: string
+  accept: Record<string, string[]>
+}
+
+interface OpenFilePickerOptions {
+  id?: string
+  multiple?: boolean
+  types?: FilePickerAcceptType[]
+  excludeAcceptAllOption?: boolean
+  startIn?: string | FileSystemHandle
 }

@@ -62,7 +62,7 @@ describe('runPipeline 端到端', () => {
     const progress: Array<[number, number]> = []
 
     const summary = await runPipeline({
-      path1,
+      outDir: path1,
       path2,
       excel: parsed,
       onLog: (level, message) => logs.push({ level, time: '', message }),
@@ -131,7 +131,7 @@ describe('runPipeline 端到端', () => {
     expect(txtRow.extractStatus).toBe('pending')
 
     // ---- 日志 ----
-    expect(logs.some((l) => l.message.includes('已复制 a.pdf → 路径1'))).toBe(true)
+    expect(logs.some((l) => l.message.includes('已复制 a.pdf → 输出目录'))).toBe(true)
     expect(logs.some((l) => l.message.includes('已生成 文件内容全文.xlsx'))).toBe(true)
   })
 
@@ -145,7 +145,7 @@ describe('runPipeline 端到端', () => {
     const parsed = await readSourceExcel(h, 'evil.xlsx')
     const rows: ResultRow[] = []
     const summary = await runPipeline({
-      path1,
+      outDir: path1,
       path2,
       excel: parsed,
       onLog: () => {},

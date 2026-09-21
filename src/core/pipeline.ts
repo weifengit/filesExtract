@@ -17,7 +17,8 @@ import type {
 } from '../types'
 
 export interface RunOptions {
-  path1: FileSystemDirectoryHandle
+  /** 输出目录：复制的文件与结果 Excel 写入处 */
+  outDir: FileSystemDirectoryHandle
   path2: FileSystemDirectoryHandle
   excel: ParsedExcel
   onLog: (level: LogLevel, message: string) => void
@@ -34,7 +35,7 @@ function yieldToUi() {
  * 主流程：
  * 1. 构建路径2 文件索引
  * 2. 逐行：需要=1 复制；提取=1 提取全文（串行以限制内存）
- * 3. 有提取行则生成 文件内容全文.xlsx 写入路径1
+ * 3. 有提取行则生成 文件内容全文.xlsx 写入输出目录
  */
 export async function runPipeline(opts: RunOptions): Promise<PipelineSummary> {
   const results: ResultRow[] = []
@@ -94,11 +95,11 @@ export async function runPipeline(opts: RunOptions): Promise<PipelineSummary> {
     // 需要=1：复制到路径1（含相对子目录）
     if (row.needed === 1) {
       try {
-        await copyFileToDir(resolved.handle, opts.path1, resolved.key)
+        await copyFileToDir(resolved.handle, opts.outDir, resolved.key)
         result.copyStatus = 'copied'
         result.note = '已复制'
         summary.copied++
-        opts.onLog('info', `已复制 ${resolved.key} → 路径1`)
+        opts.onLog('info', `已复制 ${resolved.key} → 输出目录`)
       } catch (e) {
         result.copyStatus = 'error'
         result.note = describeError(e)
@@ -148,7 +149,7 @@ export async function runPipeline(opts: RunOptions): Promise<PipelineSummary> {
   // 有提取需求才生成输出 Excel
   if (opts.excel.rows.some((r) => r.extract === 1)) {
     opts.onLog('info', '正在生成 文件内容全文.xlsx…')
-    await saveWorkbookToDir(buildOutputWorkbook(results), opts.path1)
+    await saveWorkbookToDir(buildOutputWorkbook(results), opts.outDir)
     opts.onLog('info', '已生成 文件内容全文.xlsx')
   }
 

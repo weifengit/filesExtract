@@ -1,18 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import PathPicker from './components/PathPicker.vue'
-import ExcelSelector from './components/ExcelSelector.vue'
 import ResultTable from './components/ResultTable.vue'
 import LogPanel from './components/LogPanel.vue'
-import {
-  buildOutputWorkbook,
-  findSourceExcel,
-  readSourceExcel,
-} from './core/excel'
+import { buildOutputWorkbook, readSourceExcel } from './core/excel'
 import { runPipeline } from './core/pipeline'
-import type {
-  ExcelCandidate,
-} from './core/excel'
 import type {
   LogLevel,
   LogLine,
@@ -22,15 +14,16 @@ import type {
 } from './types'
 
 // TODO: 换成你自己的 GitHub 页面地址
-const GITHUB_URL = 'https://github.com/weifengit/filesExtract'
+const GITHUB_URL = 'https://github.com/YOUR_NAME/filesExtract'
 
-const path1 = ref<FileSystemDirectoryHandle | null>(null)
+// 路径1 = 源 Excel 文件；路径2 = 文件所在文件夹；输出目录 = 复制文件与结果 Excel 写入处
+const path1 = ref<FileSystemFileHandle | null>(null)
 const path2 = ref<FileSystemDirectoryHandle | null>(null)
+const outDir = ref<FileSystemDirectoryHandle | null>(null)
 
-const excelCandidates = ref<ExcelCandidate[]>([])
-const selectedExcel = ref('')
 const parsed = ref<ParsedExcel | null>(null)
 const excelLoading = ref(false)
+const excelError = ref('')
 
 const rows = ref<ResultRow[]>([])
 const logs = ref<LogLine[]>([])
@@ -55,35 +48,29 @@ function logError(e: unknown, prefix: string) {
   addLog('error', `${prefix}：${msg}`)
 }
 
-async function pickPath1(handle: FileSystemDirectoryHandle | null) {
-  path1.value = handle
-  excelCandidates.value = []
-  selectedExcel.value = ''
+async function pickPath1(
+  handle: FileSystemFileHandle | FileSystemDirectoryHandle | null,
+) {
+  // 路径1 是文件选择器，只会返回文件句柄；此处仅做类型收窄
+  const file = handle && handle.kind === 'file' ? handle : null
+  path1.value = file
   parsed.value = null
-  if (!handle) return
-  try {
-    excelCandidates.value = await findSourceExcel(handle)
-    const first = excelCandidates.value.find((c) => !c.isXls)
-    if (first) {
-      selectedExcel.value = first.name
-      addLog('info', `路径1 中找到源 Excel：${first.name}`)
-    } else if (excelCandidates.value.length > 0) {
-      addLog('warn', '路径1 中只有 .xls 文件，请先另存为 .xlsx')
-    } else {
-      addLog('warn', '路径1 中未找到 .xlsx 源文件')
-    }
-  } catch (e) {
-    logError(e, '扫描路径1 失败')
-  }
+  excelError.value = ''
+  if (file) await loadExcel(file)
 }
 
-async function loadExcel(name: string) {
-  selectedExcel.value = name
-  if (!path1.value || !name) return
+async function loadExcel(handle: FileSystemFileHandle | null) {
+  if (!handle) return
+  const name = handle.name
+  excelError.value = ''
+  if (/\.xls$/i.test(name)) {
+    excelError.value = `${name} 为旧版 .xls 格式，无法解析，请另存为 .xlsx`
+    addLog('warn', excelError.value)
+    parsed.value = null
+    return
+  }
   excelLoading.value = true
   try {
-    const handle = excelCandidates.value.find((c) => c.name === name)?.handle
-    if (!handle) throw new Error('未找到该 Excel 文件句柄')
     parsed.value = await readSourceExcel(handle, name)
     addLog(
       'info',
@@ -91,20 +78,29 @@ async function loadExcel(name: string) {
     )
   } catch (e) {
     parsed.value = null
+    excelError.value = e instanceof Error ? e.message : String(e)
     logError(e, `读取 ${name} 失败`)
   } finally {
     excelLoading.value = false
   }
 }
 
-async function pickPath2(handle: FileSystemDirectoryHandle | null) {
-  path2.value = handle
+async function pickPath2(
+  handle: FileSystemFileHandle | FileSystemDirectoryHandle | null,
+) {
+  path2.value = handle && handle.kind === 'directory' ? handle : null
+}
+
+async function pickOutDir(
+  handle: FileSystemFileHandle | FileSystemDirectoryHandle | null,
+) {
+  outDir.value = handle && handle.kind === 'directory' ? handle : null
 }
 
 async function run() {
   if (running.value) return
-  if (!path1.value || !path2.value) {
-    alert('请先选择 路径1 和 路径2')
+  if (!path1.value || !path2.value || !outDir.value) {
+    alert('请先选择 路径1（Excel 文件）、路径2 和 输出目录')
     return
   }
   if (!parsed.value) {
@@ -121,7 +117,7 @@ async function run() {
 
   try {
     summary.value = await runPipeline({
-      path1: path1.value,
+      outDir: outDir.value,
       path2: path2.value,
       excel: parsed.value,
       onLog: addLog,
@@ -185,13 +181,15 @@ async function downloadExample() {
   </header>
 
   <section class="card">
-    <h2><span class="step">①</span> 选择目录</h2>
+    <h2><span class="step">①</span> 选择文件与目录</h2>
     <p class="hint">
-      路径1 为 Excel 所在目录（同时是输出位置）；路径2 为文件所在文件夹。
+      路径1 为源 Excel 文件；路径2 为文件所在文件夹；输出目录用于写入复制的文件与结果 Excel。
+      浏览器安全限制下仅显示名称，不提供完整路径。
     </p>
     <PathPicker
-      label="路径1 · Excel 所在目录"
-      button-text="选择路径1"
+      kind="file"
+      label="路径1 · Excel 文件"
+      button-text="选择 Excel 文件"
       :model-value="path1"
       @update:model-value="pickPath1"
     />
@@ -200,6 +198,12 @@ async function downloadExample() {
       button-text="选择路径2"
       :model-value="path2"
       @update:model-value="pickPath2"
+    />
+    <PathPicker
+      label="输出目录 · 输出位置"
+      button-text="选择输出目录"
+      :model-value="outDir"
+      @update:model-value="pickOutDir"
     />
   </section>
 
@@ -211,33 +215,25 @@ async function downloadExample() {
       </button>
     </div>
     <template v-if="path1">
-      <ExcelSelector
-        v-if="excelCandidates.some((c) => !c.isXls)"
-        :candidates="excelCandidates"
-        :model-value="selectedExcel"
-        @update:model-value="loadExcel"
-      />
-      <p v-else-if="excelCandidates.length === 0" class="muted-text">
-        路径1 中未找到 .xlsx 文件，请确认。
-      </p>
-      <p v-else class="muted-text">
-        路径1 中只有 .xls 文件（不支持解析），请先另存为 .xlsx。
-      </p>
       <div class="excel-actions">
         <button
           class="primary"
-          :disabled="!selectedExcel || excelLoading"
-          @click="loadExcel(selectedExcel)"
+          :disabled="excelLoading"
+          @click="loadExcel(path1)"
         >
           {{ excelLoading ? '读取中…' : hasExcel ? '重新读取' : '读取 Excel' }}
         </button>
         <span v-if="hasExcel" class="ok-text">
-          已就绪：{{ parsed?.sourceName }}（{{ parsed?.rows.length }} 行）
+          已就绪：{{ parsed?.sourceName }}（表头第 {{ parsed?.headerRow }} 行，共
+          {{ parsed?.rows.length }} 行数据）
+        </span>
+        <span v-else-if="excelError" class="error-text">
+          {{ excelError }}
         </span>
       </div>
     </template>
     <p v-else class="muted-text">
-      请先在上方选择 路径1（Excel 所在目录），再加载源 Excel。
+      请先在上方选择 路径1（源 Excel 文件），再加载源 Excel。
     </p>
   </section>
 
@@ -246,7 +242,7 @@ async function downloadExample() {
     <div class="run-row">
       <button
         class="primary"
-        :disabled="running || !path1 || !path2 || !hasExcel"
+        :disabled="running || !path1 || !path2 || !outDir || !hasExcel"
         @click="run"
       >
         {{ running ? '处理中…' : '开始处理' }}
@@ -352,6 +348,9 @@ async function downloadExample() {
 }
 .ok-text {
   color: var(--ok);
+}
+.error-text {
+  color: #dc2626;
 }
 
 .muted-text {
