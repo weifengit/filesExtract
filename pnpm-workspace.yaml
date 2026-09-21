@@ -1,0 +1,6 @@
+# pnpm 12 集中配置（设置已从 package.json 迁到此处）
+allowBuilds:
+  esbuild: true
+
+onlyBuiltDependencies:
+  - esbuild
