@@ -5,21 +5,17 @@ import { tmpdir } from 'node:os'
 import ExcelJS from 'exceljs'
 import { runPipeline } from '../src/core/pipeline'
 import { readSourceExcel } from '../src/core/excel'
-import { MockDirHandle } from './helpers/fs-mock'
+import { nodeBridge } from './helpers/node-bridge'
 import { makeDocxBytes, makePdfBytes, makeSourceXlsxBytes } from './helpers/fixtures'
 import type { LogLine, ResultRow } from '../src/types'
 
 describe('runPipeline 端到端', () => {
   let path1Root: string
   let path2Root: string
-  let path1: MockDirHandle
-  let path2: MockDirHandle
 
   beforeEach(async () => {
     path1Root = await mkdtemp(join(tmpdir(), 'fx-p1-'))
     path2Root = await mkdtemp(join(tmpdir(), 'fx-p2-'))
-    path1 = new MockDirHandle(path1Root)
-    path2 = new MockDirHandle(path2Root)
 
     // 路径2：真实样例文件
     await mkdir(join(path2Root, 'sub'), { recursive: true })
@@ -41,10 +37,7 @@ describe('runPipeline 端到端', () => {
       ],
       ['extract', 'needed', 'fileName'],
     )
-    const h = await path1.getFileHandle('源.xlsx', { create: true })
-    const w = await h.createWritable()
-    await w.write(new Blob([srcBuf]))
-    await w.close()
+    await writeFile(join(path1Root, '源.xlsx'), Buffer.from(srcBuf))
   })
 
   afterEach(async () => {
@@ -53,8 +46,11 @@ describe('runPipeline 端到端', () => {
   })
 
   it('复制、提取、生成输出 Excel 全链路', async () => {
-    const excelHandle = await path1.getFileHandle('源.xlsx')
-    const parsed = await readSourceExcel(excelHandle, '源.xlsx')
+    const excelBytes = await readFile(join(path1Root, '源.xlsx'))
+    const parsed = await readSourceExcel(
+      excelBytes.buffer.slice(excelBytes.byteOffset, excelBytes.byteOffset + excelBytes.byteLength) as ArrayBuffer,
+      '源.xlsx',
+    )
     expect(parsed.rows).toHaveLength(6)
 
     const logs: LogLine[] = []
@@ -62,8 +58,9 @@ describe('runPipeline 端到端', () => {
     const progress: Array<[number, number]> = []
 
     const summary = await runPipeline({
-      outDir: path1,
-      path2,
+      bridge: nodeBridge,
+      outDir: path1Root,
+      path2: path2Root,
       excel: parsed,
       onLog: (level, message) => logs.push({ level, time: '', message }),
       onRow: (row) => rows.push(row),
@@ -137,16 +134,14 @@ describe('runPipeline 端到端', () => {
 
   it('路径穿越文件名被拒绝且不写入任何文件', async () => {
     const srcBuf = await makeSourceXlsxBytes([['../evil.pdf', 1, 1]])
-    const h = await path1.getFileHandle('源2.xlsx', { create: true })
-    const w = await h.createWritable()
-    await w.write(new Blob([srcBuf]))
-    await w.close()
+    await writeFile(join(path1Root, '源2.xlsx'), Buffer.from(srcBuf))
 
-    const parsed = await readSourceExcel(h, 'evil.xlsx')
+    const parsed = await readSourceExcel(srcBuf, 'evil.xlsx')
     const rows: ResultRow[] = []
     const summary = await runPipeline({
-      outDir: path1,
-      path2,
+      bridge: nodeBridge,
+      outDir: path1Root,
+      path2: path2Root,
       excel: parsed,
       onLog: () => {},
       onRow: (row) => rows.push(row),

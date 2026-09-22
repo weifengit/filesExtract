@@ -8,6 +8,7 @@ import {
   resolveInIndex,
   sanitizeRelPath,
 } from './files'
+import type { FsBridge } from './fs-bridge'
 import { extractByExtension } from './extract'
 import type {
   LogLevel,
@@ -17,9 +18,10 @@ import type {
 } from '../types'
 
 export interface RunOptions {
+  bridge: FsBridge
   /** 输出目录：复制的文件与结果 Excel 写入处 */
-  outDir: FileSystemDirectoryHandle
-  path2: FileSystemDirectoryHandle
+  outDir: string
+  path2: string
   excel: ParsedExcel
   onLog: (level: LogLevel, message: string) => void
   onRow: (row: ResultRow) => void
@@ -49,7 +51,7 @@ export async function runPipeline(opts: RunOptions): Promise<PipelineSummary> {
   }
 
   opts.onLog('info', '正在构建路径2 文件索引…')
-  const index = await buildFileIndex(opts.path2)
+  const index = await buildFileIndex(opts.bridge, opts.path2)
   opts.onLog('info', `索引构建完成，共 ${index.size} 个文件`)
   await yieldToUi()
 
@@ -95,7 +97,7 @@ export async function runPipeline(opts: RunOptions): Promise<PipelineSummary> {
     // 需要=1：复制到路径1（含相对子目录）
     if (row.needed === 1) {
       try {
-        await copyFileToDir(resolved.handle, opts.outDir, resolved.key)
+        await copyFileToDir(opts.bridge, resolved.path, opts.outDir, resolved.key)
         result.copyStatus = 'copied'
         result.note = '已复制'
         summary.copied++
@@ -111,9 +113,11 @@ export async function runPipeline(opts: RunOptions): Promise<PipelineSummary> {
     // 提取=1：读取并解析全文
     if (row.extract === 1) {
       try {
-        const file = await resolved.handle.getFile()
-        const buf = await file.arrayBuffer()
-        const out = await extractByExtension(resolved.key, buf)
+        const bytes = await opts.bridge.readFile(resolved.path)
+        const out = await extractByExtension(
+          resolved.key,
+          bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+        )
         if (out.ok) {
           result.extractStatus = 'ok'
           result.content = out.text
@@ -149,7 +153,7 @@ export async function runPipeline(opts: RunOptions): Promise<PipelineSummary> {
   // 有提取需求才生成输出 Excel
   if (opts.excel.rows.some((r) => r.extract === 1)) {
     opts.onLog('info', '正在生成 文件内容全文.xlsx…')
-    await saveWorkbookToDir(buildOutputWorkbook(results), opts.outDir)
+    await saveWorkbookToDir(opts.bridge, buildOutputWorkbook(results), opts.outDir)
     opts.onLog('info', '已生成 文件内容全文.xlsx')
   }
 

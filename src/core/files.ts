@@ -1,3 +1,5 @@
+import { joinPath, type FsBridge } from './fs-bridge'
+
 /** 归一化相对路径：统一分隔符、小写、去前导 ./（Windows 文件系统大小写不敏感） */
 export function normalizeRelPath(p: string): string {
   return p
@@ -27,21 +29,16 @@ export function sanitizeRelPath(raw: string): string | null {
 }
 
 /**
- * 递归遍历目录，建立 归一化相对路径 -> 文件句柄 的索引。
+ * 递归遍历目录，建立 归一化相对路径 -> 绝对路径 的索引。
  * 子目录中的文件以 `sub/file.pdf` 形式入索引。
  */
 export async function buildFileIndex(
-  root: FileSystemDirectoryHandle,
-  basePath = '',
-): Promise<Map<string, FileSystemFileHandle>> {
-  const index = new Map<string, FileSystemFileHandle>()
-  for await (const [name, handle] of root.entries()) {
-    if (handle.kind === 'file') {
-      index.set(normalizeRelPath(basePath + name), handle)
-    } else if (handle.kind === 'directory') {
-      const sub = await buildFileIndex(handle, basePath + name + '/')
-      for (const [k, v] of sub) index.set(k, v)
-    }
+  bridge: FsBridge,
+  dir: string,
+): Promise<Map<string, string>> {
+  const index = new Map<string, string>()
+  for (const rel of await bridge.listFiles(dir)) {
+    index.set(normalizeRelPath(rel), joinPath(dir, rel))
   }
   return index
 }
@@ -49,7 +46,8 @@ export async function buildFileIndex(
 const EXT_FALLBACKS = ['.pdf', '.docx', '.doc']
 
 export interface ResolvedFile {
-  handle: FileSystemFileHandle
+  /** 文件绝对路径 */
+  path: string
   /** 索引中的实际键（归一化相对路径，含真实扩展名） */
   key: string
 }
@@ -62,58 +60,27 @@ export interface ResolvedFile {
  */
 export function resolveInIndex(
   relPath: string,
-  index: Map<string, FileSystemFileHandle>,
+  index: Map<string, string>,
 ): ResolvedFile | null {
   const key = normalizeRelPath(relPath)
   const direct = index.get(key)
-  if (direct) return { handle: direct, key }
+  if (direct) return { path: direct, key }
 
   if (!key.includes('.')) {
     for (const ext of EXT_FALLBACKS) {
       const hit = index.get(key + ext)
-      if (hit) return { handle: hit, key: key + ext }
+      if (hit) return { path: hit, key: key + ext }
     }
   }
   return null
 }
 
-/** 在目录下逐段创建子目录，返回最终子目录句柄 */
-export async function createParentDirs(
-  dir: FileSystemDirectoryHandle,
-  segments: string[],
-): Promise<FileSystemDirectoryHandle> {
-  let current = dir
-  for (const seg of segments) {
-    current = await current.getDirectoryHandle(seg, { create: true })
-  }
-  return current
-}
-
-/**
- * 将文件从路径2 复制到目标目录（含相对子目录）。
- * 使用流式 pipeTo，避免整文件读入内存；createWritable 默认截断覆盖旧文件。
- */
+/** 将文件从路径2 复制到输出目录（含相对子目录），覆盖已有文件 */
 export async function copyFileToDir(
-  srcHandle: FileSystemFileHandle,
-  destDir: FileSystemDirectoryHandle,
+  bridge: FsBridge,
+  srcPath: string,
+  destDir: string,
   relPath: string,
 ): Promise<void> {
-  const parts = relPath.split('/').filter((s) => s.length > 0)
-  const fileName = parts[parts.length - 1]
-  const dirSegments = parts.slice(0, -1)
-
-  const parent = await createParentDirs(destDir, dirSegments)
-  const destHandle = await parent.getFileHandle(fileName, { create: true })
-  const writable = await destHandle.createWritable()
-  const srcFile = await srcHandle.getFile()
-  try {
-    await srcFile.stream().pipeTo(writable)
-  } catch (e) {
-    try {
-      await writable.abort()
-    } catch {
-      /* 忽略二次错误 */
-    }
-    throw e
-  }
+  await bridge.copyFile(srcPath, joinPath(destDir, relPath))
 }

@@ -3,7 +3,7 @@
 根据 Excel 字段批量处理文件的小工具：把「需要的文件」对应的文件复制到目标目录，
 并把「提取文件内容」对应的 PDF / docx 打开、提取全文，生成新的 Excel。
 
-技术路线：**Vue 3 + Vite + TypeScript**（纯浏览器端，File System Access API），后期可用 Tauri 打包分发。
+技术路线：**Tauri 2 + Vue 3 + Vite + TypeScript**（Windows 桌面应用，原生文件对话框与文件系统，无浏览器权限弹窗）。
 
 ## 需求
 
@@ -14,39 +14,37 @@
   - `文件名`：路径2 中的文件（可能是全部，也可能是部分）
   - `需要的文件`：1 或 0（1 = 需要）
   - `提取文件内容`：1 或 0（1 = 需要）
-- `需要的文件` = 1 → 将对应文件从路径2 复制到路径1（保留相对子目录）
+- `需要的文件` = 1 → 将对应文件从路径2 复制到输出目录（保留相对子目录）
 - `提取文件内容` = 1 → 打开该文件，获取全部文本内容（支持 PDF、docx）
-- 生成新 Excel `文件内容全文.xlsx`（列：**文件名、文件内容全文**），放在路径1 下
+- 生成新 Excel `文件内容全文.xlsx`（列：**文件名、文件内容全文**），放在输出目录下
   - 仅包含「提取文件内容 = 1」的行；内容无法提取时（如老版 `.doc`）写入提示文案
 
-## 运行
+## 获取与使用
 
-```bash
-pnpm install
-pnpm dev          # 启动开发服务器
-```
+从 GitHub Release 下载 Windows 安装包（exe，NSIS），安装后运行：
 
-用 **Edge 或 Chrome** 打开 `http://localhost:5173`（File System Access API 需要安全上下文，不能用 `file://` 直接打开）。
-
-## 使用步骤
-
-1. 选择 **路径1**（源 Excel 文件）
+1. 选择 **路径1**（源 Excel 文件）——选择后自动读取（列顺序不限，按表头名识别）
 2. 选择 **路径2**（文件所在文件夹）
 3. 选择 **输出目录**（复制文件与结果 Excel 写入位置）
-4. 自动读取所选 Excel（列顺序不限，按表头名识别），点击**开始处理**，观察进度与日志
-5. 到输出目录查看复制的文件与 `文件内容全文.xlsx`（也可在页面直接下载）
+4. 点击**开始处理**，观察进度与日志
+5. 到输出目录查看复制的文件与 `文件内容全文.xlsx`
 
-> 界面「② 加载源 Excel」右上角提供**「下载示例 Excel 模板」**按钮：`示例.xlsx`
-> 已随应用打包（`public/示例.xlsx`，构建后进 `dist/`，Tauri 打包时一并分发），
-> 用户可直接从页面下载、按模板编辑后作为源 Excel 使用。
+> 标题栏右侧提供**「下载示例 Excel」**：弹出保存对话框选择存放位置，
+> 保存后日志会提示完整路径；按模板编辑后即可作为源 Excel 使用。
 
-> 每次刷新页面需重新选择两个目录（浏览器授权仅存在于当前会话）。
+## 打包（仅 CI，本地不打包）
+
+push 到 `main` 或打 `v*` 标签即可触发 [.github/workflows/build.yml](.github/workflows/build.yml)：
+
+- 推送 main → 运行测试 + 构建 Windows exe（Actions 页面下载 artifact）
+- 打 tag（如 `v0.1.0`）→ 自动创建 GitHub Release 并附带 exe 安装包
 
 ## 开发
 
 ```bash
-pnpm build        # 类型检查 + 生产构建（输出到 dist/）
-pnpm preview      # 预览生产构建
+pnpm install
+pnpm tauri dev    # 本地调试（需本机装有 Rust 工具链）
+pnpm build        # 类型检查 + 前端生产构建（输出到 dist/）
 pnpm test         # 运行测试（vitest，覆盖 Excel 解析/复制/PDF/docx 提取/整链路）
 ```
 
@@ -55,13 +53,10 @@ pnpm test         # 运行测试（vitest，覆盖 Excel 解析/复制/PDF/docx 
 - **Excel 读写**：exceljs（仅支持 .xlsx；遇到 .xls 会提示先另存为 .xlsx）
 - **PDF 提取**：pdfjs-dist（worker 按需加载）
 - **docx 提取**：mammoth 浏览器构建（`mammoth/mammoth.browser`）
-- **文件复制**：File System Access API，流式 `pipeTo` 复制（不整文件读入内存），支持相对子目录
+- **文件操作**：`@tauri-apps/plugin-fs` + `plugin-dialog` 原生接口；core 层通过 `FsBridge` 接口与平台解耦，测试用 node:fs 实现端到端覆盖
 - **安全性**：Excel 中的文件名视为不可信输入，会拒绝绝对路径 / `..` 穿越路径
 
 ## 已知限制
 
-- 仅 Chromium 内核浏览器（Chrome / Edge）支持
-- 浏览器安全限制：File System Access API 不提供文件绝对路径，界面仅显示所选**文件名/文件夹名**（完整路径在后期 Tauri 打包阶段可实现）
-- 老版 `.doc`（Word 97-2003 二进制）无法在浏览器解析，会标记「不支持的格式，请另存为 .docx 或 PDF」
+- 老版 `.doc`（Word 97-2003 二进制）无法解析，会标记「不支持的格式，请另存为 .docx 或 PDF」
 - 扫描版 PDF 无文本层，提取为空文本并给出提示
-- 需 `http://localhost` 或 `https` 环境运行

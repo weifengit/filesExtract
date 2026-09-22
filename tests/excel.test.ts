@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { mkdtemp, rm, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -6,14 +6,13 @@ import ExcelJS from 'exceljs'
 import {
   buildOutputWorkbook,
   cellToText,
-  findSourceExcel,
   normalizeFlag,
   readSourceExcel,
   saveWorkbookToDir,
 } from '../src/core/excel'
 import type { ResultRow } from '../src/types'
 import { makeSourceXlsxBytes } from './helpers/fixtures'
-import { MockDirHandle } from './helpers/fs-mock'
+import { nodeBridge } from './helpers/node-bridge'
 
 describe('cellToText', () => {
   it('处理各类单元格值', () => {
@@ -41,17 +40,6 @@ describe('normalizeFlag', () => {
 })
 
 describe('readSourceExcel', () => {
-  let root: string
-  let dir: MockDirHandle
-
-  beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), 'fx-xlsx-'))
-    dir = new MockDirHandle(root)
-  })
-  afterEach(async () => {
-    await rm(root, { recursive: true, force: true })
-  })
-
   it('按表头名映射列（列顺序打乱也能读）', async () => {
     const buf = await makeSourceXlsxBytes(
       [
@@ -62,12 +50,8 @@ describe('readSourceExcel', () => {
       ],
       ['extract', 'needed', 'fileName'], // 打乱列顺序
     )
-    const handle = await dir.getFileHandle('源.xlsx', { create: true })
-    const w = await handle.createWritable()
-    await w.write(new Blob([buf]))
-    await w.close()
 
-    const parsed = await readSourceExcel(handle, '源.xlsx')
+    const parsed = await readSourceExcel(buf, '源.xlsx')
     expect(parsed.headerRow).toBe(1)
     expect(parsed.rows).toHaveLength(3)
     expect(parsed.rows[0]).toEqual({ fileName: 'a.pdf', needed: 1, extract: 1 })
@@ -81,35 +65,9 @@ describe('readSourceExcel', () => {
     ws.addRow(['随便', '数据'])
     ws.addRow(['1', '2'])
     const buf = (await wb.xlsx.writeBuffer()) as ArrayBuffer
-    const handle = await dir.getFileHandle('bad.xlsx', { create: true })
-    const w = await handle.createWritable()
-    await w.write(new Blob([buf]))
-    await w.close()
-    await expect(readSourceExcel(handle, 'bad.xlsx')).rejects.toThrow(
+    await expect(readSourceExcel(buf, 'bad.xlsx')).rejects.toThrow(
       '未在 Excel 中找到',
     )
-  })
-})
-
-describe('findSourceExcel', () => {
-  it('只返回 .xlsx/.xls 并区分类型', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'fx-find-'))
-    try {
-      const dir = new MockDirHandle(root)
-      const wb = new ExcelJS.Workbook()
-      wb.addWorksheet('s')
-      const buf = (await wb.xlsx.writeBuffer()) as ArrayBuffer
-      await writeFileVia(dir, '源.xlsx', buf)
-      await writeFileVia(dir, '旧.xls', buf)
-      await writeFileVia(dir, 'readme.txt', Buffer.from('x'))
-
-      const cands = await findSourceExcel(dir)
-      expect(cands.map((c) => c.name).sort()).toEqual(['旧.xls', '源.xlsx'])
-      expect(cands.find((c) => c.name === '旧.xls')!.isXls).toBe(true)
-      expect(cands.find((c) => c.name === '源.xlsx')!.isXls).toBe(false)
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
   })
 })
 
@@ -132,12 +90,11 @@ describe('buildOutputWorkbook / saveWorkbookToDir', () => {
   it('saveWorkbookToDir 写入真实文件且可再读回', async () => {
     const root = await mkdtemp(join(tmpdir(), 'fx-save-'))
     try {
-      const dir = new MockDirHandle(root)
       const wb = new ExcelJS.Workbook()
       const ws = wb.addWorksheet('文件内容全文')
       ws.columns = [{ header: '文件名', key: 'fileName' }, { header: '文件内容全文', key: 'content' }]
       ws.addRow({ fileName: 'a.pdf', content: '内容' })
-      await saveWorkbookToDir(wb, dir, '文件内容全文.xlsx')
+      await saveWorkbookToDir(nodeBridge, wb, root, '文件内容全文.xlsx')
 
       const s = await stat(join(root, '文件内容全文.xlsx'))
       expect(s.isFile()).toBe(true)
@@ -152,14 +109,3 @@ describe('buildOutputWorkbook / saveWorkbookToDir', () => {
     }
   })
 })
-
-async function writeFileVia(
-  dir: MockDirHandle,
-  name: string,
-  data: Buffer | ArrayBuffer,
-) {
-  const h = await dir.getFileHandle(name, { create: true })
-  const w = await h.createWritable()
-  await w.write(new Blob([data]))
-  await w.close()
-}

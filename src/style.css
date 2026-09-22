@@ -31,9 +31,11 @@ body {
 }
 
 #app {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 24px 20px 60px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px 10px;
+  overflow: hidden;
 }
 
 button {
@@ -71,22 +73,12 @@ button:disabled {
 .card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 16px 18px;
-  margin-bottom: 16px;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
 }
 
 h1 {
-  font-size: 20px;
-  margin: 0 0 4px;
-}
-
-h2 {
-  font-size: 15px;
-  margin: 0 0 12px;
-}
-
-.subtitle {
-  color: var(--text-muted);
-  margin: 0 0 20px;
+  font-size: 17px;
+  margin: 0;
 }

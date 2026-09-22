@@ -36,13 +36,14 @@ watch(
 .log-box {
   background: #111827;
   color: #d1d5db;
-  border-radius: 8px;
-  padding: 10px 12px;
+  border-radius: 6px;
+  padding: 6px 10px;
   font-family: Consolas, 'Courier New', monospace;
-  font-size: 12.5px;
-  max-height: 260px;
+  font-size: 12px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  line-height: 1.7;
+  line-height: 1.6;
 }
 .empty {
   color: #6b7280;

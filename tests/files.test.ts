@@ -9,7 +9,7 @@ import {
   resolveInIndex,
   sanitizeRelPath,
 } from '../src/core/files'
-import { MockDirHandle, MockFileHandle } from './helpers/fs-mock'
+import { nodeBridge } from './helpers/node-bridge'
 
 describe('normalizeRelPath', () => {
   it('统一分隔符、去空白、转小写', () => {
@@ -34,7 +34,6 @@ describe('sanitizeRelPath', () => {
 })
 
 describe('buildFileIndex / resolveInIndex', () => {
-  let dir: MockDirHandle
   let root: string
 
   beforeEach(async () => {
@@ -43,7 +42,6 @@ describe('buildFileIndex / resolveInIndex', () => {
     await writeFile(join(root, 'a.pdf'), 'x')
     await writeFile(join(root, 'b.docx'), 'x')
     await writeFile(join(root, 'sub', 'e.pdf'), 'x')
-    dir = new MockDirHandle(root)
   })
 
   afterEach(async () => {
@@ -51,12 +49,12 @@ describe('buildFileIndex / resolveInIndex', () => {
   })
 
   it('递归索引含子目录文件', async () => {
-    const index = await buildFileIndex(dir)
+    const index = await buildFileIndex(nodeBridge, root)
     expect([...index.keys()].sort()).toEqual(['a.pdf', 'b.docx', 'sub/e.pdf'])
   })
 
   it('精确匹配 / 扩展名补试', async () => {
-    const index = await buildFileIndex(dir)
+    const index = await buildFileIndex(nodeBridge, root)
     expect(resolveInIndex('a.pdf', index)?.key).toBe('a.pdf')
     // 省略扩展名
     expect(resolveInIndex('a', index)?.key).toBe('a.pdf')
@@ -75,10 +73,9 @@ describe('copyFileToDir', () => {
       await mkdir(join(srcRoot, 'sub'), { recursive: true })
       await writeFile(join(srcRoot, 'sub', 'e.pdf'), 'HELLO-CONTENT')
 
-      const srcIndex = await buildFileIndex(new MockDirHandle(srcRoot))
-      const dst = new MockDirHandle(dstRoot)
+      const srcIndex = await buildFileIndex(nodeBridge, srcRoot)
 
-      await copyFileToDir(srcIndex.get('sub/e.pdf')!, dst, 'sub/e.pdf')
+      await copyFileToDir(nodeBridge, srcIndex.get('sub/e.pdf')!, dstRoot, 'sub/e.pdf')
 
       const copied = await readFile(join(dstRoot, 'sub', 'e.pdf'), 'utf8')
       expect(copied).toBe('HELLO-CONTENT')
@@ -96,8 +93,8 @@ describe('copyFileToDir', () => {
     try {
       await writeFile(join(srcRoot, 'a.txt'), 'NEW')
       await writeFile(join(dstRoot, 'a.txt'), 'OLD')
-      const srcIndex = await buildFileIndex(new MockDirHandle(srcRoot))
-      await copyFileToDir(srcIndex.get('a.txt')!, new MockDirHandle(dstRoot), 'a.txt')
+      const srcIndex = await buildFileIndex(nodeBridge, srcRoot)
+      await copyFileToDir(nodeBridge, srcIndex.get('a.txt')!, dstRoot, 'a.txt')
       expect(await readFile(join(dstRoot, 'a.txt'), 'utf8')).toBe('NEW')
     } finally {
       await rm(srcRoot, { recursive: true, force: true })

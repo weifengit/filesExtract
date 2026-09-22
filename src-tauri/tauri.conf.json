@@ -12,9 +12,11 @@
   "app": {
     "windows": [
       {
-        "title": "filesextract",
-        "width": 1024,
-        "height": 768,
+        "title": "文件提取工具",
+        "width": 940,
+        "height": 680,
+        "minWidth": 720,
+        "minHeight": 480,
         "resizable": true
       }
     ],

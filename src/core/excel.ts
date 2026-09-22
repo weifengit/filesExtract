@@ -1,42 +1,14 @@
 import ExcelJS from 'exceljs'
+import { joinPath, type FsBridge } from './fs-bridge'
 import type { FieldRow, Flag, ParsedExcel, ResultRow } from '../types'
 
-/** 路径1 下的候选源 Excel */
-export interface ExcelCandidate {
-  name: string
-  handle: FileSystemFileHandle
-  /** 是否为旧版 .xls（exceljs 无法解析） */
-  isXls: boolean
-}
-
-/** 扫描路径1 顶层，找出可作为源 Excel 的文件（含 .xls 以便提示） */
-export async function findSourceExcel(
-  dir: FileSystemDirectoryHandle,
-): Promise<ExcelCandidate[]> {
-  const candidates: ExcelCandidate[] = []
-  for await (const [name, handle] of dir.entries()) {
-    if (handle.kind !== 'file') continue
-    const lower = name.toLowerCase()
-    if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
-      candidates.push({ name, handle, isXls: lower.endsWith('.xls') })
-    }
-  }
-  // 优先 xlsx，多个则按名称排序，保证展示稳定
-  candidates.sort((a, b) => {
-    if (a.isXls !== b.isXls) return a.isXls ? 1 : -1
-    return a.name.localeCompare(b.name, 'zh-CN')
-  })
-  return candidates
-}
-
-/** 读取并解析源 Excel（按表头名称映射列，列顺序不固定） */
+/** 解析源 Excel 字节（按表头名称映射列，列顺序不固定） */
 export async function readSourceExcel(
-  handle: FileSystemFileHandle,
+  bytes: ArrayBuffer,
   sourceName: string,
 ): Promise<ParsedExcel> {
-  const file = await handle.getFile()
   const wb = new ExcelJS.Workbook()
-  await wb.xlsx.load(await file.arrayBuffer())
+  await wb.xlsx.load(bytes)
 
   for (const ws of wb.worksheets) {
     const header = locateHeaderRow(ws)
@@ -146,19 +118,11 @@ export function buildOutputWorkbook(rows: ResultRow[]): ExcelJS.Workbook {
 
 /** 将工作簿保存为 xlsx 写入指定目录 */
 export async function saveWorkbookToDir(
+  bridge: FsBridge,
   wb: ExcelJS.Workbook,
-  dir: FileSystemDirectoryHandle,
+  dir: string,
   fileName = '文件内容全文.xlsx',
 ): Promise<void> {
   const buffer = await wb.xlsx.writeBuffer()
-  const blob = new Blob([buffer as BlobPart], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const handle = await dir.getFileHandle(fileName, { create: true })
-  const writable = await handle.createWritable()
-  try {
-    await writable.write(blob)
-  } finally {
-    await writable.close()
-  }
+  await bridge.writeFile(joinPath(dir, fileName), new Uint8Array(buffer))
 }

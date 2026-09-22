@@ -99,17 +99,19 @@ function extractClass(s: ExtractStatus): string {
 
 <style scoped>
 .table-wrap {
-  overflow-x: auto;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 12.5px;
 }
 th,
 td {
   border: 1px solid var(--border);
-  padding: 6px 8px;
+  padding: 3px 6px;
   text-align: left;
   vertical-align: top;
 }
