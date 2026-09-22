@@ -18,6 +18,9 @@ import type {
 // TODO: 换成你自己的 GitHub 页面地址
 const GITHUB_URL = 'https://github.com/YOUR_NAME/filesExtract'
 
+/** 是否运行在 Tauri 桌面环境（浏览器打开时插件 IPC 不可用，文件功能全部失效） */
+const isTauri = '__TAURI_INTERNALS__' in window
+
 // 路径1 = 源 Excel 文件；路径2 = 文件所在文件夹；输出目录 = 复制文件与结果 Excel 写入处
 const path1 = ref('')
 const path2 = ref('')
@@ -144,6 +147,10 @@ async function downloadExample() {
     </button>
   </header>
 
+  <p v-if="!isTauri" class="env-warn">
+    当前在浏览器中运行，文件功能不可用。请使用 pnpm tauri dev 或安装后的桌面版 exe 打开。
+  </p>
+
   <section class="card">
     <PathPicker
       kind="file"
@@ -235,6 +242,16 @@ async function downloadExample() {
 }
 .link-btn:hover {
   opacity: 0.85;
+}
+
+.env-warn {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 6px;
+  color: #92400e;
+  font-size: 12.5px;
 }
 
 .run-card {
