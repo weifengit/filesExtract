@@ -123,6 +123,10 @@ jobs:
       contents: write
 
     steps:
+      # gh release create --generate-notes 需要 git 仓库上下文
+      - name: Checkout
+        uses: actions/checkout@v7
+
       # 把三端产物（filesextract-windows / macos / linux）合并下载到同一目录
       - name: Download all installer artifacts
         uses: actions/download-artifact@v8
@@ -131,9 +135,14 @@ jobs:
           path: installers/
           merge-multiple: true
 
+      # Linux 多路径上传会保留 appimage/ deb/ 子目录，扁平化到 installers/ 根
+      - name: Flatten installer directory
+        run: |
+          find installers -mindepth 2 -type f -exec mv -t installers {} +
+          ls -la installers/
+
       - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ls -la installers/
           gh release create "$GITHUB_REF_NAME" installers/* --generate-notes
