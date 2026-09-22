@@ -135,10 +135,11 @@ jobs:
           path: installers/
           merge-multiple: true
 
-      # Linux 多路径上传会保留 appimage/ deb/ 子目录，扁平化到 installers/ 根
+      # Linux 多路径上传会保留 appimage/ deb/ 子目录，扁平化到 installers/ 根并删掉空目录
       - name: Flatten installer directory
         run: |
           find installers -mindepth 2 -type f -exec mv -t installers {} +
+          find installers -mindepth 1 -type d -empty -delete
           ls -la installers/
 
       - name: Create Release
